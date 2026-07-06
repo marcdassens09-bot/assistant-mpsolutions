@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Assistant MP Solutions IA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --forest:#1B4332;
+    --leaf:#2E9E5B;
+    --leaf-soft:#E4F3EA;
+    --bg:#F6F8F4;
+    --ink:#16241D;
+    --line:#E2E8DE;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:"Figtree",system-ui,sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    display:flex;
+    flex-direction:column;
+    height:100vh;
+  }
+
+  /* En-tête */
+  .head{
+    display:flex;align-items:center;gap:11px;
+    padding:15px 18px;background:var(--forest);color:#fff;flex-shrink:0;
+  }
+  .head .av{width:36px;height:36px;border-radius:50%;background:var(--leaf);display:grid;place-items:center;font-size:1.1rem}
+  .head .who{font-weight:600;font-size:1rem;line-height:1.2}
+  .head .who small{display:block;font-weight:400;font-size:.75rem;color:#B7D3C3}
+
+  /* Zone des messages */
+  .messages{
+    flex:1;overflow-y:auto;padding:20px 16px;
+    display:flex;flex-direction:column;gap:12px;
+  }
+  .msg{max-width:82%;padding:11px 15px;border-radius:16px;font-size:.96rem;line-height:1.45;white-space:pre-wrap;word-wrap:break-word}
+  .msg.bot{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:5px}
+  .msg.user{align-self:flex-end;background:var(--forest);color:#fff;border-bottom-right-radius:5px}
+  .msg a{color:inherit;font-weight:600}
+
+  /* Petit indicateur "en train d'écrire" */
+  .typing{align-self:flex-start;background:#fff;border:1px solid var(--line);border-radius:16px;border-bottom-left-radius:5px;padding:13px 16px;display:flex;gap:5px}
+  .typing span{width:7px;height:7px;border-radius:50%;background:#9DB3A6;animation:blink 1.2s infinite}
+  .typing span:nth-child(2){animation-delay:.2s}
+  .typing span:nth-child(3){animation-delay:.4s}
+  @keyframes blink{0%,60%,100%{opacity:.3}30%{opacity:1}}
+
+  /* Barre de saisie */
+  .bar{
+    display:flex;gap:9px;padding:12px 14px;background:#fff;border-top:1px solid var(--line);flex-shrink:0;
+  }
+  .bar input{
+    flex:1;border:1.5px solid var(--line);border-radius:999px;
+    padding:12px 18px;font-size:.96rem;font-family:inherit;outline:none;
+  }
+  .bar input:focus{border-color:var(--leaf)}
+  .bar button{
+    border:none;background:var(--leaf);color:#fff;border-radius:50%;
+    width:46px;height:46px;flex-shrink:0;cursor:pointer;display:grid;place-items:center;
+    transition:background .15s ease;
+  }
+  .bar button:hover{background:#26894f}
+  .bar button:disabled{background:#B7D3C3;cursor:not-allowed}
+  .bar button svg{width:20px;height:20px}
+
+  @media (prefers-reduced-motion:reduce){
+    .typing span{animation:none;opacity:.6}
+  }
+</style>
+</head>
+<body>
+
+  <div class="head">
+    <span class="av">🌿</span>
+    <div class="who">Assistant MP Solutions IA<small>En ligne · posez votre question</small></div>
+  </div>
+
+  <div class="messages" id="messages"></div>
+
+  <div class="bar">
+    <input type="text" id="input" placeholder="Écrivez votre message..." autocomplete="off" maxlength="500" />
+    <button id="send" aria-label="Envoyer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+    </button>
+  </div>
+
+<script>
+  const messagesEl = document.getElementById("messages");
+  const inputEl = document.getElementById("input");
+  const sendEl = document.getElementById("send");
+  let historique = [];
+
+  // Ajoute une bulle à l'écran. On transforme l'email en lien cliquable.
+  function ajouterMessage(texte, qui){
+    const div = document.createElement("div");
+    div.className = "msg " + qui;
+    const html = texte.replace(
+      /([\w.-]+@[\w.-]+\.\w+)/g,
+      '<a href="mailto:$1">$1</a>'
+    );
+    div.innerHTML = html;
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function montrerTyping(){
+    const div = document.createElement("div");
+    div.className = "typing";
+    div.id = "typing";
+    div.innerHTML = "<span></span><span></span><span></span>";
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+  function cacherTyping(){
+    const t = document.getElementById("typing");
+    if(t) t.remove();
+  }
+
+  async function envoyer(){
+    const texte = inputEl.value.trim();
+    if(!texte) return;
+
+    ajouterMessage(texte, "user");
+    inputEl.value = "";
+    sendEl.disabled = true;
+    montrerTyping();
+
+    try{
+      const rep = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: texte, historique: historique })
+      });
+      const data = await rep.json();
+      cacherTyping();
+      ajouterMessage(data.reponse, "bot");
+      if(data.historique) historique = data.historique;
+    }catch(e){
+      cacherTyping();
+      ajouterMessage("Désolé, un problème est survenu. Réessayez dans un instant.", "bot");
+    }finally{
+      sendEl.disabled = false;
+      inputEl.focus();
+    }
+  }
+
+  sendEl.addEventListener("click", envoyer);
+  inputEl.addEventListener("keydown", e => { if(e.key === "Enter") envoyer(); });
+
+  // Message d'accueil (affiché sans appeler l'IA, pour rien gaspiller)
+  ajouterMessage(
+    "Bonjour 👋 Je suis l'assistant de MP Solutions IA. Je peux vous expliquer comment un chatbot peut aider votre commerce à ne plus perdre de clients. Que souhaitez-vous savoir ?",
+    "bot"
+  );
+  inputEl.focus();
+</script>
+
+</body>
+</html>
