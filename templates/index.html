@@ -71,6 +71,13 @@
   .bar button:disabled{background:#B7D3C3;cursor:not-allowed}
   .bar button svg{width:20px;height:20px}
 
+  /* Bouton micro — secondaire, pour ne pas concurrencer « Envoyer ».
+     Masqué automatiquement si le navigateur ne sait pas faire (voir plus bas). */
+  .bar button.mic{background:#fff;color:var(--leaf);border:1.5px solid var(--line)}
+  .bar button.mic:hover{background:#F2F7F4;border-color:var(--leaf)}
+  .bar button.mic.active{background:#D93025;border-color:#D93025;color:#fff;animation:pulseMic 1.1s ease-in-out infinite}
+  @keyframes pulseMic{0%,100%{box-shadow:0 0 0 0 rgba(217,48,37,.45)}50%{box-shadow:0 0 0 7px rgba(217,48,37,0)}}
+
   @media (prefers-reduced-motion:reduce){
     .typing span{animation:none;opacity:.6}
   }
@@ -87,6 +94,9 @@
 
   <div class="bar">
     <input type="text" id="input" placeholder="Écrivez votre message..." autocomplete="off" maxlength="500" />
+    <button id="mic" class="mic" aria-label="Dicter votre message" title="Dicter votre message">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v4M8 23h8"/></svg>
+    </button>
     <button id="send" aria-label="Envoyer">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
     </button>
@@ -154,6 +164,33 @@
 
   sendEl.addEventListener("click", envoyer);
   inputEl.addEventListener("keydown", e => { if(e.key === "Enter") envoyer(); });
+
+  // ─── MICRO (Web Speech API) ────────────────────────────────────────────────
+  // Chrome et Edge savent faire ; Firefox non, Safari iOS de façon inconstante.
+  // Le bouton disparaît de lui-même quand le navigateur ne suit pas.
+  const micEl = document.getElementById("mic");
+  if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const rec = new SR();
+    rec.lang = "fr-FR";
+    rec.continuous = false;
+    rec.interimResults = false;
+    let recActive = false;
+
+    micEl.addEventListener("click", () => {
+      if (recActive) { rec.stop(); return; }
+      try { rec.start(); } catch(e) { /* déjà démarré : on ignore */ }
+    });
+    rec.onstart  = () => { recActive = true;  micEl.classList.add("active"); };
+    rec.onend    = () => { recActive = false; micEl.classList.remove("active"); };
+    rec.onerror  = () => { recActive = false; micEl.classList.remove("active"); };
+    rec.onresult = e => {
+      inputEl.value = e.results[0][0].transcript;
+      envoyer();
+    };
+  } else {
+    micEl.style.display = "none";
+  }
 
   // Message d'accueil (affiché sans appeler l'IA, pour rien gaspiller)
   ajouterMessage(
