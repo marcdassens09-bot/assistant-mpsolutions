@@ -173,6 +173,15 @@
   sendEl.addEventListener("click", envoyer);
   inputEl.addEventListener("keydown", e => { if(e.key === "Enter") envoyer(); });
 
+  // La page hôte (bulle du site vitrine) demande de vider l'affichage à la
+  // fermeture du chat. On ne touche pas à `historique` : le bot garde le
+  // contexte de la conversation même si l'écran redevient vide.
+  window.addEventListener("message", (e) => {
+    if(e.data === "mpia-clear-display"){
+      messagesEl.innerHTML = "";
+    }
+  });
+
   // ─── MICRO (Web Speech API) ────────────────────────────────────────────────
   // Chrome et Edge savent faire ; Firefox non, Safari iOS de façon inconstante.
   // Le bouton disparaît de lui-même quand le navigateur ne suit pas.
