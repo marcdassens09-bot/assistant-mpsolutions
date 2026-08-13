@@ -32,6 +32,9 @@
     display:flex;align-items:center;gap:11px;
     padding:15px 18px;background:var(--forest);color:#fff;flex-shrink:0;
   }
+  /* En iframe (bulle du site vitrine), la page hôte affiche déjà son propre
+     en-tête "Assistant MP Solutions IA" — éviter le doublon visuel. */
+  body.embedded .head{ display:none; }
   .head .av{width:36px;height:36px;border-radius:50%;background:var(--leaf);display:grid;place-items:center;font-size:1.1rem}
   .head .who{font-weight:600;font-size:1rem;line-height:1.2}
   .head .who small{display:block;font-weight:400;font-size:.75rem;color:#B7D3C3}
@@ -84,6 +87,11 @@
 </style>
 </head>
 <body>
+  <script>
+    if (window.self !== window.top) {
+      document.body.classList.add('embedded');
+    }
+  </script>
 
   <div class="head">
     <span class="av">🌿</span>
