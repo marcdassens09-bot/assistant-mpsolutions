@@ -22,6 +22,23 @@ app = Flask(__name__)
 # --- SÉCURITÉ : limiteur anti-spam (nombre de messages par minute) ---
 limiter = Limiter(get_remote_address, app=app, default_limits=["20 per minute"])
 
+
+@app.after_request
+def _entetes_securite(response):
+    """En-têtes de sécurité HTTP sur toutes les réponses.
+    frame-ancestors : la bulle est embarquée en iframe sur le site vitrine
+    (mpsolutionsia.fr / site-mpsolutions) — on autorise ces origines et on
+    bloque les autres (anti-clickjacking). Pas de Permissions-Policy : le
+    micro reste autorisé pour la saisie vocale."""
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Strict-Transport-Security"] = "max-age=63072000"
+    response.headers["Content-Security-Policy"] = (
+        "frame-ancestors 'self' https://mpsolutionsia.fr https://www.mpsolutionsia.fr "
+        "https://site-mpsolutions.onrender.com"
+    )
+    return response
+
 client = Anthropic(timeout=30.0)
 
 
