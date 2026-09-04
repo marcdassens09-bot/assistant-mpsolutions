@@ -29,7 +29,9 @@ def _entetes_securite(response):
     frame-ancestors : la bulle est embarquée en iframe sur le site vitrine
     (mpsolutionsia.fr / site-mpsolutions) — on autorise ces origines et on
     bloque les autres (anti-clickjacking). Pas de Permissions-Policy : le
-    micro reste autorisé pour la saisie vocale."""
+    micro reste autorisé pour la saisie vocale.
+    CORS : la démonstration intégrée à la vitrine appelle /chat directement
+    depuis le navigateur — on autorise uniquement les origines du site."""
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Strict-Transport-Security"] = "max-age=63072000"
@@ -37,6 +39,20 @@ def _entetes_securite(response):
         "frame-ancestors 'self' https://mpsolutionsia.fr https://www.mpsolutionsia.fr "
         "https://site-mpsolutions.onrender.com"
     )
+    origines = {
+        "https://mpsolutionsia.fr",
+        "https://www.mpsolutionsia.fr",
+        "https://marcdassens09-bot.github.io",
+        "https://site-mpsolutions.onrender.com",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    }
+    origine = request.headers.get("Origin")
+    if origine in origines:
+        response.headers["Access-Control-Allow-Origin"] = origine
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        response.headers["Vary"] = "Origin"
     return response
 
 client = Anthropic(timeout=30.0)
@@ -47,6 +63,9 @@ SYSTEM_PROMPT = """Tu es l'assistant virtuel de MP Solutions IA. Tu es un assist
 
 # TON RÔLE
 Tu es poli, clair, chaleureux mais professionnel. Tu vouvoies toujours l'utilisateur. Tes réponses sont courtes, faciles à lire, et vont droit au but. Tu écris dans un français simple, sans jargon technique.
+
+# LANGUE
+Le site est en français, avec une version anglaise. Réponds toujours dans la langue du visiteur : français par défaut, anglais s'il écrit en anglais.
 
 # CE QUE TU SAIS SUR L'ENTREPRISE
 MP Solutions IA est une entreprise basée en Ariège (Artigat, 09). Elle est dirigée par Marc-Paul.
