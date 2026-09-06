@@ -2,6 +2,7 @@ import re
 import os
 from flask import Flask, request, jsonify, render_template
 from anthropic import Anthropic
+from openai import OpenAI
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from dotenv import load_dotenv
@@ -18,6 +19,7 @@ def filtrer_donnees_sensibles(texte):
 
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 12 * 1024 * 1024
 
 # --- SÉCURITÉ : limiteur anti-spam (nombre de messages par minute) ---
 limiter = Limiter(get_remote_address, app=app, default_limits=["20 per minute"])
@@ -56,6 +58,18 @@ def _entetes_securite(response):
     return response
 
 client = Anthropic(timeout=30.0)
+
+
+def _client_transcription():
+    """Construit le client uniquement lors d'une dictée.
+
+    Ainsi, le chatbot texte continue de démarrer même si OPENAI_API_KEY n'a
+    pas encore été ajoutée dans les variables d'environnement Render.
+    """
+    cle = os.environ.get("OPENAI_API_KEY")
+    if not cle:
+        return None
+    return OpenAI(api_key=cle, timeout=45.0)
 
 
 # --- LE CERVEAU DE L'ASSISTANT (le "prompt système") ---
@@ -222,5 +236,50 @@ def chat():
         return jsonify({"reponse": "Désolé, je rencontre un problème technique. Merci de réessayer dans quelques instants."}), 500
 
 
-port = int(os.environ.get("PORT", 5000))
-app.run(host="0.0.0.0", port=port)
+@app.route("/transcribe", methods=["POST"])
+@limiter.limit("8 per minute")
+def transcribe():
+    """Transcrit un enregistrement du navigateur sans stocker le fichier."""
+    client_transcription = _client_transcription()
+    if client_transcription is None:
+        return jsonify({
+            "erreur": "La transcription vocale n'est pas encore configurée."
+        }), 503
+
+    audio = request.files.get("audio")
+    if audio is None or not audio.filename:
+        return jsonify({"erreur": "Aucun enregistrement audio reçu."}), 400
+
+    types_acceptes = {
+        "audio/webm", "video/webm", "audio/ogg", "audio/mp4",
+        "audio/mpeg", "audio/wav", "audio/x-wav",
+    }
+    type_audio = (audio.mimetype or "").split(";", 1)[0].lower()
+    if type_audio not in types_acceptes:
+        return jsonify({"erreur": "Format audio non pris en charge."}), 415
+
+    langue = request.form.get("language", "fr")
+    if langue not in {"fr", "en"}:
+        langue = "fr"
+
+    try:
+        resultat = client_transcription.audio.transcriptions.create(
+            model=os.environ.get("OPENAI_TRANSCRIPTION_MODEL", "gpt-transcribe"),
+            file=(audio.filename, audio.stream, type_audio),
+            language=langue,
+            prompt="MP Solutions IA, Ariège, TPE, PME, agent IA",
+        )
+        texte = (resultat.text or "").strip()
+        if not texte:
+            return jsonify({"erreur": "Aucune parole n'a été reconnue."}), 422
+        return jsonify({"texte": texte})
+    except Exception as e:
+        print(f"Erreur API transcription : {e}")
+        return jsonify({
+            "erreur": "La transcription vocale est momentanément indisponible."
+        }), 502
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
