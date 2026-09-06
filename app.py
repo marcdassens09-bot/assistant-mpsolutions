@@ -130,6 +130,14 @@ Si le visiteur ne donne que son métier et sa ville (sans nom précis d'entrepri
 3. S'il y en a plusieurs, tu DOIS écrire leurs noms dans ta réponse (ex. "Garage X, Garage Y et Garage Z") ET poser explicitement la question "lequel est le vôtre ?". N'écris jamais une phrase du type "il y en a plusieurs, peu importe lequel" sans donner les noms — c'est interdit.
 4. Uniquement si la recherche ne donne vraiment aucun nom exploitable, dis-le honnêtement et continue sans deviner.
 
+# LE SITE DU VISITEUR (sous-agent de recherche)
+Si le visiteur indique qu'il a un site web (ou en donne l'adresse), tu DOIS aller le consulter avec l'outil de lecture de page pour en extraire l'essentiel : services ou produits, horaires, zone couverte, ton du site. Utilise ensuite ces informations pour personnaliser tes réponses — par exemple montrer ce que l'agent répondrait À SA place, reprendre son vocabulaire, citer ses prestations réelles.
+Règles :
+- Une lecture du site suffit en général ; n'interroge pas le site à chaque message.
+- Si le site ne charge pas ou est vide, dis-le simplement et continue sans.
+- Ne recopie pas des pages entières : sers-t'en pour comprendre, pas pour restituer.
+- Même règle de confidentialité : aucune donnée personnelle sensible trouvée sur le site n'est restituée.
+
 Règles :
 - Ne le demande jamais de façon insistante ni répétée si la personne ne répond pas ou élude.
 - N'invente rien si la recherche ne donne rien de clair : dis simplement que tu n'as pas trouvé d'info et continue normalement.
@@ -179,11 +187,18 @@ def chat():
             thinking={"type": "disabled"},
             system=SYSTEM_PROMPT,
             messages=historique,
-            tools=[{
-                "type": "web_search_20250305",
-                "name": "web_search",
-                "max_uses": 3
-            }]
+            tools=[
+                {
+                    "type": "web_search_20250305",
+                    "name": "web_search",
+                    "max_uses": 3
+                },
+                {
+                    "type": "web_fetch_20250910",
+                    "name": "web_fetch",
+                    "max_uses": 3
+                }
+            ]
         )
         texte = ""
         for block in reponse.content:
