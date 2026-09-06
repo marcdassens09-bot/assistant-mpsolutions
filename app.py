@@ -69,7 +69,7 @@ def _client_transcription():
     cle = os.environ.get("OPENAI_API_KEY")
     if not cle:
         return None
-    return OpenAI(api_key=cle, timeout=45.0)
+    return OpenAI(api_key=cle, timeout=45.0, max_retries=0)
 
 
 # --- LE CERVEAU DE L'ASSISTANT (le "prompt système") ---
@@ -274,12 +274,23 @@ def transcribe():
             return jsonify({"erreur": "Aucune parole n'a été reconnue."}), 422
         return jsonify({"texte": texte})
     except Exception as e:
-        print(f"Erreur API transcription : {e}")
-        return jsonify({
-            "erreur": "La transcription vocale est momentanément indisponible."
-        }), 502
+        status = getattr(e, "status_code", None)
+        code = getattr(e, "code", None)
+        app.logger.warning("Transcription indisponible: status=%s code=%s", status, code)
+        if status in (401, 403):
+            message = "Accès OpenAI refusé. Le responsable doit vérifier la clé et ses permissions."
+        elif status == 429 and code == "insufficient_quota":
+            message = "Crédit ou quota OpenAI épuisé. Le responsable doit vérifier la facturation API."
+        elif status == 429:
+            message = "Trop de demandes de transcription. Réessayez dans un instant."
+        elif status == 404 or code == "model_not_found":
+            message = "Modèle de transcription indisponible. Le responsable doit vérifier sa configuration."
+        else:
+            message = "La transcription vocale est momentanément indisponible. Réessayez."
+        return jsonify({"erreur": message}), 502
 
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
