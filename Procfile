@@ -1,1 +1,1 @@
-web: python website_app.py
+web: python hardened_app.py
