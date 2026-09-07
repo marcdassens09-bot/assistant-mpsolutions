@@ -16,3 +16,5 @@ jobs:
         env:
           ANTHROPIC_API_KEY: test-placeholder
         run: python -m unittest -v tests/test_site_security.py
+      - name: Run live Render integration tests
+        run: python tests/live_render_check.py
