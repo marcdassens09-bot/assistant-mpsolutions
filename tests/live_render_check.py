@@ -7,6 +7,7 @@ import uuid
 import wave
 
 BASE = "https://assistant-mpsolutions.onrender.com"
+FAILURES = []
 
 
 def request_json(path, payload, timeout=45):
@@ -30,12 +31,20 @@ def request_json(path, payload, timeout=45):
         return exc.code, parsed
 
 
+def record(name, func):
+    try:
+        func()
+        print(f"PASS {name}")
+    except Exception as exc:
+        FAILURES.append((name, repr(exc)))
+        print(f"FAIL {name}: {exc}")
+
+
 def root_check():
     req = urllib.request.Request(BASE + "/", headers={"User-Agent": "MP-Solutions-Security-Test/1.0"})
     with urllib.request.urlopen(req, timeout=45) as response:
         assert response.status == 200, f"root status={response.status}"
         assert response.read(), "root body empty"
-    print("OK root GET 200")
 
 
 def blocked_site_checks():
@@ -51,26 +60,25 @@ def blocked_site_checks():
         "file:///etc/passwd",
         "http://user:pass@example.com",
     ]
+    errors = []
     for target in blocked:
         status, body = request_json("/analyze-site", {"url": target})
-        assert status == 400, f"SECURITY FAILURE {target}: status={status} body={body}"
-        assert body.get("ok") is False, f"unexpected body for {target}: {body}"
-        print(f"OK blocked {target}")
+        if status != 400 or body.get("ok") is not False:
+            errors.append(f"{target} -> status={status} body={body}")
+    assert not errors, " | ".join(errors)
 
 
 def public_site_check():
     status, body = request_json("/analyze-site", {"url": "https://example.com"}, timeout=60)
-    assert status == 200, f"public analyze failed status={status} body={body}"
-    assert body.get("ok") is True, f"public analyze not ok: {body}"
+    assert status == 200, f"status={status} body={body}"
+    assert body.get("ok") is True, f"body={body}"
     assert isinstance(body.get("facts"), dict), f"facts missing: {body}"
-    print("OK public site analysis")
 
 
 def chat_check():
     status, body = request_json("/chat", {"message": "Bonjour, je suis plombier. Que peut faire votre assistant ?", "historique": []}, timeout=60)
-    assert status == 200, f"chat failed status={status} body={body}"
+    assert status == 200, f"status={status} body={body}"
     assert isinstance(body.get("reponse"), str) and body["reponse"].strip(), f"chat empty: {body}"
-    print("OK chat POST")
 
 
 def make_silence_wav():
@@ -114,14 +122,18 @@ def transcribe_check():
     except urllib.error.HTTPError as exc:
         status = exc.code
         body = exc.read().decode("utf-8", errors="replace")
-    assert status in (200, 422), f"transcribe backend/OpenAI failure status={status} body={body}"
-    print(f"OK transcribe route/OpenAI path status={status}")
+    assert status in (200, 422), f"status={status} body={body}"
 
 
 if __name__ == "__main__":
-    root_check()
-    blocked_site_checks()
-    public_site_check()
-    chat_check()
-    transcribe_check()
+    record("root GET", root_check)
+    record("analyze-site blocked targets", blocked_site_checks)
+    record("analyze-site public target", public_site_check)
+    record("chat POST", chat_check)
+    record("transcribe POST", transcribe_check)
+    print("SUMMARY")
+    if FAILURES:
+        for name, err in FAILURES:
+            print(f"- FAIL {name}: {err}")
+        raise SystemExit(1)
     print("ALL LIVE RENDER CHECKS PASSED")
