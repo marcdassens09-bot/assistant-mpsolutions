@@ -215,8 +215,8 @@ Réponds d'abord à la question concrète du visiteur, puis pose au maximum une 
 - « Va-t-il réserver ou encaisser à ma place ? » : ne promets aucune connexion, réservation confirmée, paiement ou vérification en temps réel non établie. Distingue recueillir une demande et confirmer une vente.
 
 PARCOURS OBLIGATOIRE — UNE SEULE QUESTION À LA FOIS
-1. Si le métier n'est pas encore connu, demande uniquement le métier.
-2. Dès que le métier est connu, donne immédiatement deux exemples adaptés de demandes auxquelles le chatbot peut répondre, puis demande quelle demande revient le plus souvent.
+1. Si le métier n'est pas encore connu, demande uniquement le métier ou le nom de l'entreprise (avec sa commune).
+2. Dès que le métier est connu (après la recherche web si une entreprise est nommée), donne immédiatement deux exemples adaptés de demandes auxquelles le chatbot peut répondre, puis demande quelle demande revient le plus souvent.
 3. Propose ensuite un calcul personnalisé du chiffre d'affaires potentiellement récupérable.
 4. Si elle accepte, collecte séparément et dans cet ordre :
    a) la valeur moyenne d'un client ;
@@ -235,6 +235,18 @@ ADAPTATION AU MÉTIER
 - beauté ou santé : rendez-vous ;
 - immobilier : mandat ; assurance : contrat ; formation : nouveau client.
 Pour tout autre métier, adapte sobrement les exemples à ce que le visiteur vous dit. N'invente jamais de moyenne, de prix client, de volume de demandes ou de taux de transformation.
+
+RECHERCHE WEB SUR L'ENTREPRISE DU VISITEUR
+Tu disposes d'un outil de recherche web. Il sert uniquement à comprendre l'entreprise du visiteur, pour lui montrer ce que son chatbot pourrait faire pour elle.
+- Dès que le visiteur donne le nom de son entreprise, ou son métier et sa commune, fais une recherche (par exemple « Fumeco Artigat »).
+- Sers-toi de ce que tu trouves (activité, services ou produits, publics, zone, horaires affichés, site existant) pour donner deux exemples concrets de questions que SES clients posent et auxquelles son chatbot répondrait. Dis brièvement ce que tu as compris de son activité et demande-lui de corriger si c'est inexact.
+- Si plusieurs établissements correspondent, écris leurs noms et demande « Lequel est le vôtre ? ». S'il n'y en a qu'un, nomme-le.
+- Si la recherche ne donne rien de clair, dis-le honnêtement et continue sans deviner.
+- Une recherche suffit en général. Ne relance pas de recherche à chaque message.
+- Ne restitue jamais de téléphone, d'adresse précise, d'e-mail ni de nom de personne trouvés en ligne. Reste sur l'activité de l'entreprise.
+- N'invente rien et ne présente pas une information trouvée en ligne comme certaine : elle peut être ancienne.
+- Ne cherche jamais de sujet sans rapport avec l'entreprise du visiteur et MP Solutions IA (actualité, météo, devoirs, autres entreprises par curiosité, prix de concurrents, etc.). Refuse poliment et reviens à son activité.
+- Ne cherche jamais les tarifs de MP Solutions IA ni de prestataires de chatbots.
 
 PRIX — RÈGLE ABSOLUE
 - Ne donne JAMAIS de prix, de fourchette, d'ordre de grandeur, de coût annuel, de taux de couverture ni de délai d'amortissement, même si le visiteur insiste, se présente comme client ou cite lui-même un montant.
@@ -259,6 +271,21 @@ AUTRES RÈGLES
 - Reste centré sur les services MP Solutions IA. Si tu ignores une réponse, dis-le.
 - Si le visiteur souhaite poursuivre après le diagnostic, propose simplement d'écrire à contact@mpsolutionsia.fr pour une proposition personnalisée. Ne propose jamais d'essai gratuit et n'utilise pas de pression commerciale.
 """
+
+
+# Recherche web côté Anthropic (10 $ / 1 000 recherches + tokens des résultats).
+# Garde-fou coût : 2 recherches maximum par requête.
+OUTIL_RECHERCHE_WEB = {
+    "type": "web_search_20250305",
+    "name": "web_search",
+    "max_uses": 2,
+    "user_location": {
+        "type": "approximate",
+        "region": "Occitanie",
+        "country": "FR",
+        "timezone": "Europe/Paris",
+    },
+}
 
 
 OUTIL_CALCULER_ROI = {
@@ -307,23 +334,45 @@ def chat():
     })
 
     try:
-        outils = [OUTIL_CALCULER_ROI]
+        # Échanges internes (outils, résultats de recherche) gardés côté serveur :
+        # seul le texte final repart dans l'historique du navigateur.
+        messages_api = list(historique)
+        outils = [OUTIL_CALCULER_ROI, OUTIL_RECHERCHE_WEB]
         reponse = client.messages.create(
             model="claude-sonnet-5",
             max_tokens=1000,
             thinking={"type": "disabled"},
             system=SYSTEM_PROMPT,
-            messages=historique,
+            messages=messages_api,
             tools=outils,
         )
 
         # L'IA choisit quand calculer, mais Python reste l'unique source des
         # résultats. Deux passages suffisent : appel de l'outil puis réponse.
-        for _ in range(2):
+        for _ in range(3):
+            if reponse.stop_reason == "pause_turn":
+                # Recherche web longue mise en pause par l'API : on renvoie
+                # le message tel quel pour qu'elle reprenne.
+                messages_api.append({
+                    "role": "assistant",
+                    "content": [
+                        b.model_dump() if hasattr(b, "model_dump") else b
+                        for b in reponse.content
+                    ],
+                })
+                reponse = client.messages.create(
+                    model="claude-sonnet-5",
+                    max_tokens=1000,
+                    thinking={"type": "disabled"},
+                    system=SYSTEM_PROMPT,
+                    messages=messages_api,
+                    tools=outils,
+                )
+                continue
             appels = [b for b in reponse.content if b.type == "tool_use"]
             if not appels:
                 break
-            historique.append({
+            messages_api.append({
                 "role": "assistant",
                 "content": [
                     b.model_dump() if hasattr(b, "model_dump") else b
@@ -345,13 +394,13 @@ def chat():
                     "content": contenu,
                     "is_error": erreur,
                 })
-            historique.append({"role": "user", "content": resultats})
+            messages_api.append({"role": "user", "content": resultats})
             reponse = client.messages.create(
                 model="claude-sonnet-5",
                 max_tokens=1000,
                 thinking={"type": "disabled"},
                 system=SYSTEM_PROMPT,
-                messages=historique,
+                messages=messages_api,
                 tools=outils,
             )
         texte = ""
