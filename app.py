@@ -151,7 +151,7 @@ Si le visiteur ne donne que son métier et sa ville (sans nom précis d'entrepri
 4. Uniquement si la recherche ne donne vraiment aucun nom exploitable, dis-le honnêtement et continue sans deviner.
 
 # LE SITE DU VISITEUR (sous-agent de recherche)
-Si le visiteur indique qu'il a un site web (ou en donne l'adresse), tu DOIS aller le consulter avec l'outil de lecture de page pour en extraire l'essentiel : services ou produits, horaires, zone couverte, ton du site. Utilise ensuite ces informations pour personnaliser tes réponses — par exemple montrer ce que l'agent répondrait À SA place, reprendre son vocabulaire, citer ses prestations réelles.
+Si le visiteur indique qu'il a un site web (ou en donne l'adresse), tu DOIS aller le consulter avec l'outil de lecture de page pour en extraire l'essentiel : services ou produits, horaires, zone couverte, ton du site. Utilise ensuite ces informations pour personnaliser tes réponses — par exemple montrer ce que l'assistant répondrait À SA place, reprendre son vocabulaire, citer ses prestations réelles.
 Règles :
 - Une lecture du site suffit en général ; n'interroge pas le site à chaque message.
 - Si le site ne charge pas ou est vide, dis-le simplement et continue sans.
@@ -452,7 +452,7 @@ def transcribe():
             model=os.environ.get("OPENAI_TRANSCRIPTION_MODEL", "gpt-transcribe"),
             file=(audio.filename, audio.stream, type_audio),
             language=langue,
-            prompt="MP Solutions IA, Ariège, TPE, PME, agent IA",
+            prompt="MP Solutions IA, Ariège, TPE, PME, assistant IA",
         )
         texte = (resultat.text or "").strip()
         if not texte:
