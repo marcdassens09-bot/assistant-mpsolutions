@@ -14,6 +14,8 @@ class SiteSecurityError(Exception):
 secured.SiteSecurityError = SiteSecurityError
 app = secured.app
 
+import retell_webhook  # noqa: E402,F401  (ajoute la route /retell-webhook)
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
