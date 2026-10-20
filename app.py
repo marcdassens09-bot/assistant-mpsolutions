@@ -8,8 +8,12 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from dotenv import load_dotenv
 from roi import calculer_roi
+from reporting_logger import log_event
+from reporting_dashboard import reporting_bp
 
 load_dotenv()
+
+REPORTING_LOG_PATH = os.environ.get("REPORTING_LOG_PATH", "chat_events.jsonl")
 
 
 # --- SÉCURITÉ : on masque les données sensibles avant tout traitement ---
@@ -22,6 +26,7 @@ def filtrer_donnees_sensibles(texte):
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 12 * 1024 * 1024
+app.register_blueprint(reporting_bp)
 
 # --- SÉCURITÉ : limiteur anti-spam (nombre de messages par minute) ---
 limiter = Limiter(get_remote_address, app=app, default_limits=["20 per minute"])
@@ -425,6 +430,12 @@ def chat():
             "role": "assistant",
             "content": texte
         })
+        log_event(
+            log_path=REPORTING_LOG_PATH,
+            question=filtrer_donnees_sensibles(message),
+            answered=bool(texte) and texte != "Un instant, je réfléchis...",
+            client_name="MP Solutions IA - bulle site vitrine",
+        )
         return jsonify({"reponse": texte, "historique": historique})
 
     except Exception as e:
