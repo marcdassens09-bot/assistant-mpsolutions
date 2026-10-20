@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Reporting — {{ client_name }}</title>
+<style>
+  body { background:#FFFFFF; color:#1b2a3a; font-family:Arial,sans-serif; margin:0; padding:40px; }
+  .wrap { max-width:760px; margin:0 auto; }
+  h1 { color:#1b2a3a; font-size:22px; margin-bottom:4px; }
+  .tagline { color:#2563EB; font-size:13px; margin-bottom:32px; }
+  .grid { display:flex; gap:16px; margin-bottom:32px; flex-wrap:wrap; }
+  .card { border:1px solid #dde1e6; border-radius:8px; padding:16px 20px; flex:1; min-width:140px; }
+  .card .num { font-size:28px; font-weight:bold; color:#2563EB; }
+  .card .lbl { font-size:12px; color:#1b2a3a; opacity:0.75; }
+  .section { margin-bottom:28px; }
+  .section h2 { font-size:15px; color:#2563EB; border-bottom:1px solid #dde1e6; padding-bottom:6px; }
+  .row { display:flex; justify-content:space-between; padding:6px 0; font-size:14px; border-bottom:1px solid #f2f3f5; }
+  .footer { font-size:11px; color:#1b2a3a; opacity:0.6; margin-top:40px; border-top:1px solid #dde1e6; padding-top:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>&gt;&gt; Reporting — {{ client_name }}</h1>
+  <div class="tagline">Visites et échanges de la bulle du site — en toute transparence.</div>
+
+  <div class="grid">
+    <div class="card"><div class="num">{{ stats.total }}</div><div class="lbl">Échanges (30 jours)</div></div>
+    <div class="card"><div class="num">{{ stats.urgent_count }}</div><div class="lbl">Alertes urgence</div></div>
+    <div class="card"><div class="num">{{ stats.unanswered_count }}</div><div class="lbl">Messages pris (non répondus)</div></div>
+  </div>
+
+  <div class="section">
+    <h2>++ Profils des visiteurs</h2>
+    {% for profile, count in stats.profiles.items() %}
+    <div class="row"><span>{{ profile }}</span><span>{{ count }}</span></div>
+    {% endfor %}
+  </div>
+
+  <div class="section">
+    <h2>++ Questions les plus fréquentes (mots-clés)</h2>
+    {% for word, count in stats.top_keywords %}
+    <div class="row"><span>{{ word }}</span><span>{{ count }}</span></div>
+    {% endfor %}
+  </div>
+
+  <div class="section">
+    <h2>++ Tendance sur 7 jours</h2>
+    {% for day, count in stats.daily %}
+    <div class="row"><span>{{ day }}</span><span>{{ count }} échanges</span></div>
+    {% endfor %}
+  </div>
+
+  <div class="footer">
+    MP Solutions IA — contact@mpsolutionsia.fr — Artigat (09130)
+  </div>
+</div>
+</body>
+</html>
