@@ -18,7 +18,23 @@ Utilisation dans app_XXX.py :
 
 import json
 import os
+import threading
+import urllib.request
 from datetime import datetime, timezone
+
+
+def _envoyer_sheet(url, event):
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(event, ensure_ascii=False).encode("utf-8"),
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as rep:
+            rep.read()
+    except Exception as e:
+        print(f"[reporting_logger] Envoi au Google Sheet impossible : {e}", flush=True)
 
 
 def log_event(log_path, question, profile="inconnu", urgent=False,
@@ -48,6 +64,15 @@ def log_event(log_path, question, profile="inconnu", urgent=False,
     }
     if client_name:
         event["client"] = client_name
+
+    # Render gratuit efface le disque à chaque mise en veille : si un Google
+    # Sheet est configuré, c'est lui qui garde l'historique. Envoi en
+    # arrière-plan pour ne pas ralentir la réponse au visiteur.
+    sheet_url = os.environ.get("REPORTING_SHEET_URL", "").strip()
+    if sheet_url:
+        threading.Thread(target=_envoyer_sheet, args=(sheet_url, event),
+                         daemon=True).start()
+        return
 
     # La journalisation est un à-côté : si elle échoue (dossier /var/data
     # absent en local, disque plein, permissions...), le chat doit quand
