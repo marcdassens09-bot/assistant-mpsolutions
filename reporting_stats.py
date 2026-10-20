@@ -4,6 +4,8 @@ Calcule les statistiques à partir du log JSONL écrit par reporting_logger.py
 """
 
 import json
+import os
+import urllib.request
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 
@@ -15,9 +17,31 @@ STOPWORDS = {
 }
 
 
+def _lire_sheet(url):
+    """Lit tous les événements du Google Sheet. Une erreur remonte : mieux
+    vaut une page en erreur qu'un faux « 0 échange »."""
+    with urllib.request.urlopen(url, timeout=30) as rep:
+        donnees = json.loads(rep.read().decode("utf-8"))
+    if not donnees.get("ok"):
+        raise RuntimeError("Le Google Sheet a refusé la lecture (jeton invalide ?)")
+    return donnees.get("events", [])
+
+
 def load_events(log_path, days=30):
-    """Charge les événements des N derniers jours depuis le fichier JSONL."""
+    """Charge les événements des N derniers jours (Google Sheet si
+    REPORTING_SHEET_URL est défini, sinon fichier JSONL)."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    sheet_url = os.environ.get("REPORTING_SHEET_URL", "").strip()
+    if sheet_url:
+        events = []
+        for ev in _lire_sheet(sheet_url):
+            try:
+                ev["timestamp"] = str(ev["timestamp"]).replace("Z", "+00:00")
+                if datetime.fromisoformat(ev["timestamp"]) >= cutoff:
+                    events.append(ev)
+            except (KeyError, ValueError):
+                continue
+        return events
     events = []
     try:
         with open(log_path, "r", encoding="utf-8") as f:
