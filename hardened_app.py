@@ -15,6 +15,7 @@ secured.SiteSecurityError = SiteSecurityError
 app = secured.app
 
 import retell_webhook  # noqa: E402,F401  (ajoute la route /retell-webhook)
+import demo_vocale  # noqa: E402,F401  (ajoute la page cachée /demo-vocale/<code>)
 
 
 if __name__ == "__main__":
