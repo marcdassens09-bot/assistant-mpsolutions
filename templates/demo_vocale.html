@@ -13,6 +13,7 @@
     --fond: #FFFFFF;
     --gris: #6b7a72;
     --rouge: #b3261e;
+    --vert-vif: #2e7d4f;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
@@ -30,7 +31,7 @@
   .marque span { color: var(--orange); }
   h1 { font-size: 24px; line-height: 1.25; margin: 28px 0 8px; }
   .sous { color: var(--gris); font-size: 15px; margin: 0 0 8px; max-width: 360px; }
-  .zone { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; width: 100%; }
+  .zone { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; width: 100%; }
   #bouton {
     width: 190px; height: 190px; border-radius: 50%;
     border: none; cursor: pointer;
@@ -39,14 +40,25 @@
     box-shadow: 0 10px 30px rgba(232,115,10,.35);
     transition: transform .15s, background .2s;
     -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
   #bouton:active { transform: scale(.96); }
-  #bouton.en-ligne { background: var(--rouge); box-shadow: 0 10px 30px rgba(179,38,30,.35); animation: pouls 1.6s infinite; }
+  #bouton:disabled { cursor: default; }
+  #bouton.en-ligne { background: var(--vert-vif); animation: pouls 1.6s infinite; }
   #bouton.attente { background: var(--gris); box-shadow: none; }
-  @keyframes pouls { 0%,100% { box-shadow: 0 0 0 0 rgba(179,38,30,.45); } 50% { box-shadow: 0 0 0 18px rgba(179,38,30,0); } }
+  @keyframes pouls { 0%,100% { box-shadow: 0 0 0 0 rgba(46,125,79,.45); } 50% { box-shadow: 0 0 0 18px rgba(46,125,79,0); } }
+  #raccrocher {
+    display: none;
+    border: 2px solid var(--rouge); background: #fff; color: var(--rouge);
+    font-family: inherit; font-size: 16px; font-weight: 600;
+    padding: 10px 26px; border-radius: 999px; cursor: pointer;
+    touch-action: manipulation;
+  }
+  #raccrocher.visible { display: inline-block; }
   #statut { font-size: 17px; min-height: 1.4em; font-weight: 600; }
   #aide { color: var(--gris); font-size: 14px; max-width: 340px; min-height: 2.8em; }
   #aide.erreur { color: var(--rouge); }
+  #diag { color: #9aa59f; font-size: 11px; min-height: 1em; }
   footer { color: var(--gris); font-size: 13px; margin-top: 18px; }
   footer em { color: var(--vert); font-style: normal; }
 </style>
@@ -59,7 +71,9 @@
   <div class="zone">
     <button id="bouton" type="button">Appeler</button>
     <div id="statut">Prête</div>
-    <div id="aide">Autorisez le micro quand le téléphone le demande.</div>
+    <button id="raccrocher" type="button">Raccrocher</button>
+    <div id="aide">Autorisez le micro quand le téléphone le demande. Gardez cette page ouverte pendant l'appel.</div>
+    <div id="diag"></div>
   </div>
 
   <footer>C'est une intelligence artificielle : elle vous le dit dès le début.<br><em>Écouter, comprendre, servir — en toute transparence.</em></footer>
@@ -67,11 +81,35 @@
 <script type="module">
   const RELAIS = "{{ url_for('demo_vocale_page', code=code) }}";
   const bouton = document.getElementById("bouton");
+  const btnRaccrocher = document.getElementById("raccrocher");
   const statut = document.getElementById("statut");
   const aide = document.getElementById("aide");
+  const diagEl = document.getElementById("diag");
 
   let appel = null;
   let RetellClient = null;
+  let verrouEcran = null;
+  let raccrocheVolontaire = false;
+  let debut = 0;
+  // Journal technique de l'appel (envoyé au serveur à la fin, pour comprendre les coupures)
+  let journal = {};
+
+  function t() { return debut ? ((Date.now() - debut) / 1000).toFixed(1) + "s" : "0s"; }
+  function noter(cle, valeur) { journal[cle] = valeur + " @" + t(); }
+
+  // On observe la liaison audio (WebRTC) pour savoir si c'est le réseau qui lâche.
+  const PC = window.RTCPeerConnection;
+  if (PC) {
+    window.RTCPeerConnection = function (...args) {
+      const pc = new PC(...args);
+      pc.addEventListener("connectionstatechange", () => noter("pc_" + pc.connectionState, "oui"));
+      pc.addEventListener("iceconnectionstatechange", () => noter("ice_" + pc.iceConnectionState, "oui"));
+      return pc;
+    };
+    window.RTCPeerConnection.prototype = PC.prototype;
+  }
+  document.addEventListener("visibilitychange", () => { if (appel) noter("page_" + document.visibilityState, "oui"); });
+  window.addEventListener("pagehide", () => { if (appel) noter("pagehide", "oui"); });
 
   function etat(texte, classeBouton, libelle, messageAide, erreur) {
     statut.textContent = texte;
@@ -88,6 +126,30 @@
     return "L'appel n'a pas pu démarrer. Vérifiez la connexion et réessayez.";
   }
 
+  async function garderEcranAllume() {
+    try {
+      if ("wakeLock" in navigator) {
+        verrouEcran = await navigator.wakeLock.request("screen");
+        noter("wakelock", "ok");
+      } else {
+        noter("wakelock", "absent");
+      }
+    } catch (e) { noter("wakelock", "refus"); }
+  }
+  function libererEcran() { try { verrouEcran && verrouEcran.release(); } catch (e) {} verrouEcran = null; }
+  // Le verrou saute quand la page est masquée : on le reprend au retour.
+  document.addEventListener("visibilitychange", () => {
+    if (appel && document.visibilityState === "visible" && !verrouEcran) garderEcranAllume();
+  });
+
+  function envoyerDiag(raison) {
+    const corps = Object.assign({ fin: raison, duree: t(), ua: navigator.userAgent.slice(0, 150) }, journal);
+    diagEl.textContent = "Fin : " + raison + " (" + t() + ")";
+    try {
+      fetch(RELAIS + "/diag", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corps), keepalive: true });
+    } catch (e) {}
+  }
+
   async function chargerSdk() {
     if (RetellClient) return RetellClient;
     const mod = await import("https://cdn.jsdelivr.net/npm/retell-client-js-sdk@3.0.2/+esm");
@@ -96,8 +158,10 @@
   }
 
   async function demarrer() {
+    journal = {}; debut = Date.now(); raccrocheVolontaire = false; diagEl.textContent = "";
     etat("Connexion…", "attente", "…", "");
     bouton.disabled = true;
+    garderEcranAllume();  // dans le geste de l'utilisateur
     try {
       const Client = await chargerSdk();
       const client = new Client({
@@ -108,17 +172,24 @@
         agent_id: "demo",  // remplacé côté serveur par l'agent de démo
         hooks: {
           onStatus: (s) => {
-            if (s === "live") { bouton.disabled = false; etat("En ligne", "en-ligne", "Raccrocher", "Parlez normalement, elle vous écoute."); }
+            noter("statut_" + s, "oui");
+            if (s === "live") {
+              etat("En ligne", "en-ligne", "En ligne", "Parlez normalement, elle vous écoute.");
+              btnRaccrocher.className = "visible";
+            }
             if (s === "ended") terminer();
           },
-          onEnd: () => terminer(),
-          onError: (err) => { console.error(err); },
+          onEnd: (info) => { if (info && info.disconnection_reason) noter("raison", info.disconnection_reason); terminer(); },
+          onError: (err) => { noter("erreur", String((err && err.message) || err).slice(0, 120)); console.error(err); },
         },
       });
       await appel.ready;
     } catch (err) {
       console.error(err);
-      appel = null;
+      noter("echec", String((err && err.message) || err).slice(0, 120));
+      if (appel) { appel = null; envoyerDiag("echec_demarrage"); }
+      libererEcran();
+      btnRaccrocher.className = "";
       bouton.disabled = false;
       etat("Pas de connexion", "", "Réessayer", messageErreur(err), true);
     }
@@ -127,16 +198,27 @@
   function terminer() {
     if (!appel) return;
     appel = null;
+    libererEcran();
+    btnRaccrocher.className = "";
     bouton.disabled = false;
-    etat("Appel terminé", "", "Rappeler", "Le récapitulatif arrive par mail dans quelques instants.");
+    envoyerDiag(raccrocheVolontaire ? "raccroche_bouton" : "coupure");
+    if (raccrocheVolontaire) {
+      etat("Appel terminé", "", "Rappeler", "Le récapitulatif arrive par mail dans quelques instants.");
+    } else {
+      etat("Appel coupé", "", "Rappeler", "La liaison a été interrompue. Appuyez pour rappeler.", true);
+    }
   }
 
   async function raccrocher() {
-    bouton.disabled = true;
+    if (!appel) return;
+    raccrocheVolontaire = true;
+    btnRaccrocher.className = "";
     try { await appel.end(); } catch (e) { console.error(e); }
+    terminer();
   }
 
-  bouton.addEventListener("click", () => { appel ? raccrocher() : demarrer(); });
+  bouton.addEventListener("click", () => { if (!appel) demarrer(); });
+  btnRaccrocher.addEventListener("click", raccrocher);
 </script>
 </body>
 </html>
