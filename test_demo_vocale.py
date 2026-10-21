@@ -125,3 +125,11 @@ def test_stop_call(client):
     assert rep.status_code == 204
     assert vu["url"] == "https://api.retellai.com/v2/stop-call/call_abc-1"
     assert client.post(f"/demo-vocale/{CODE}/v2/stop-call/bad$id").status_code == 400
+
+
+def test_diag(client, capsys):
+    rep = client.post(f"/demo-vocale/{CODE}/diag", json={"fin": "coupure", "ice_failed": "oui @7.0s", "objet": {"x": 1}})
+    assert rep.status_code == 204
+    sortie = capsys.readouterr().out
+    assert "coupure" in sortie and "objet" not in sortie
+    assert client.post("/demo-vocale/mauvais-code-xxxxx/diag", json={}).status_code == 404

@@ -122,6 +122,23 @@ def demo_vocale_creer_appel(code):
     return _relayer("/v3/create-web-call", corps)
 
 
+@app.route("/demo-vocale/<code>/diag", methods=["POST"])
+@limiter.limit("20 per minute")
+def demo_vocale_diag(code):
+    """Le telephone envoie ici pourquoi l'appel s'est termine (pour les logs Render).
+    Aucune donnee personnelle : etats techniques uniquement."""
+    _verifier_code(code)
+    donnees = request.get_json(silent=True) or {}
+    propre = {
+        str(k)[:30]: str(v)[:200]
+        for k, v in list(donnees.items())[:15]
+        if isinstance(v, (str, int, float, bool))
+    }
+    app.logger.warning("demo-vocale diag : %s", json.dumps(propre, ensure_ascii=False))
+    print("demo-vocale diag :", json.dumps(propre, ensure_ascii=False), flush=True)
+    return Response(status=204)
+
+
 @app.route("/demo-vocale/<code>/v2/stop-call/<call_id>", methods=["POST"])
 @limiter.limit("10 per minute")
 def demo_vocale_arreter_appel(code, call_id):
