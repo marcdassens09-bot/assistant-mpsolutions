@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Assistante vocale — MP Solutions IA</title>
+<style>
+  :root {
+    --vert: #1b3a2b;
+    --orange: #E8730A;
+    --fond: #FFFFFF;
+    --gris: #6b7a72;
+    --rouge: #b3261e;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--fond);
+    color: var(--vert);
+    font-family: "Poppins", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px 16px 20px;
+    text-align: center;
+  }
+  .marque { font-weight: 700; letter-spacing: .04em; font-size: 15px; }
+  .marque span { color: var(--orange); }
+  h1 { font-size: 24px; line-height: 1.25; margin: 28px 0 8px; }
+  .sous { color: var(--gris); font-size: 15px; margin: 0 0 8px; max-width: 360px; }
+  .zone { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; width: 100%; }
+  #bouton {
+    width: 190px; height: 190px; border-radius: 50%;
+    border: none; cursor: pointer;
+    background: var(--orange); color: #fff;
+    font-family: inherit; font-size: 24px; font-weight: 600; line-height: 1.2;
+    box-shadow: 0 10px 30px rgba(232,115,10,.35);
+    transition: transform .15s, background .2s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #bouton:active { transform: scale(.96); }
+  #bouton.en-ligne { background: var(--rouge); box-shadow: 0 10px 30px rgba(179,38,30,.35); animation: pouls 1.6s infinite; }
+  #bouton.attente { background: var(--gris); box-shadow: none; }
+  @keyframes pouls { 0%,100% { box-shadow: 0 0 0 0 rgba(179,38,30,.45); } 50% { box-shadow: 0 0 0 18px rgba(179,38,30,0); } }
+  #statut { font-size: 17px; min-height: 1.4em; font-weight: 600; }
+  #aide { color: var(--gris); font-size: 14px; max-width: 340px; min-height: 2.8em; }
+  #aide.erreur { color: var(--rouge); }
+  footer { color: var(--gris); font-size: 13px; margin-top: 18px; }
+  footer em { color: var(--vert); font-style: normal; }
+</style>
+</head>
+<body>
+  <div class="marque">MP SOLUTIONS <span>IA</span></div>
+  <h1>Parlez à l'assistante</h1>
+  <p class="sous">Posez-lui une question comme si vous appeliez une entreprise. Elle prend aussi les messages.</p>
+
+  <div class="zone">
+    <button id="bouton" type="button">Appeler</button>
+    <div id="statut">Prête</div>
+    <div id="aide">Autorisez le micro quand le téléphone le demande.</div>
+  </div>
+
+  <footer>C'est une intelligence artificielle : elle vous le dit dès le début.<br><em>Écouter, comprendre, servir — en toute transparence.</em></footer>
+
+<script type="module">
+  const RELAIS = "{{ url_for('demo_vocale_page', code=code) }}";
+  const bouton = document.getElementById("bouton");
+  const statut = document.getElementById("statut");
+  const aide = document.getElementById("aide");
+
+  let appel = null;
+  let RetellClient = null;
+
+  function etat(texte, classeBouton, libelle, messageAide, erreur) {
+    statut.textContent = texte;
+    bouton.className = classeBouton || "";
+    bouton.textContent = libelle;
+    aide.textContent = messageAide || "";
+    aide.className = erreur ? "erreur" : "";
+  }
+
+  function messageErreur(err) {
+    const m = String((err && err.message) || err || "");
+    if (/permission|notallowed|denied/i.test(m)) return "Le micro est refusé. Autorisez-le dans les réglages du navigateur, puis réessayez.";
+    if (/429|too many/i.test(m)) return "Trop d'essais d'affilée. Attendez une minute.";
+    return "L'appel n'a pas pu démarrer. Vérifiez la connexion et réessayez.";
+  }
+
+  async function chargerSdk() {
+    if (RetellClient) return RetellClient;
+    const mod = await import("https://cdn.jsdelivr.net/npm/retell-client-js-sdk@3.0.2/+esm");
+    RetellClient = mod.RetellClient;
+    return RetellClient;
+  }
+
+  async function demarrer() {
+    etat("Connexion…", "attente", "…", "");
+    bouton.disabled = true;
+    try {
+      const Client = await chargerSdk();
+      const client = new Client({
+        key: "relais",  // la vraie clé reste sur le serveur
+        fetch: (url, init) => fetch(RELAIS + new URL(String(url)).pathname, init),
+      });
+      appel = client.createWebCall({
+        agent_id: "demo",  // remplacé côté serveur par l'agent de démo
+        hooks: {
+          onStatus: (s) => {
+            if (s === "live") { bouton.disabled = false; etat("En ligne", "en-ligne", "Raccrocher", "Parlez normalement, elle vous écoute."); }
+            if (s === "ended") terminer();
+          },
+          onEnd: () => terminer(),
+          onError: (err) => { console.error(err); },
+        },
+      });
+      await appel.ready;
+    } catch (err) {
+      console.error(err);
+      appel = null;
+      bouton.disabled = false;
+      etat("Pas de connexion", "", "Réessayer", messageErreur(err), true);
+    }
+  }
+
+  function terminer() {
+    if (!appel) return;
+    appel = null;
+    bouton.disabled = false;
+    etat("Appel terminé", "", "Rappeler", "Le récapitulatif arrive par mail dans quelques instants.");
+  }
+
+  async function raccrocher() {
+    bouton.disabled = true;
+    try { await appel.end(); } catch (e) { console.error(e); }
+  }
+
+  bouton.addEventListener("click", () => { appel ? raccrocher() : demarrer(); });
+</script>
+</body>
+</html>
