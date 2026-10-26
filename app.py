@@ -219,7 +219,7 @@ Réponds d'abord à la question concrète du visiteur, puis pose au maximum une 
 
 PARCOURS OBLIGATOIRE — UNE SEULE QUESTION À LA FOIS
 1. Si le métier n'est pas encore connu, demande uniquement le métier ou le nom de l'entreprise (avec sa commune).
-2. Dès que le métier est connu (après la recherche web si une entreprise est nommée), donne immédiatement deux exemples adaptés de demandes auxquelles le chatbot peut répondre, puis demande quelle demande revient le plus souvent.
+2. Dès que le métier est connu (après la recherche web si une entreprise est nommée), donne immédiatement deux exemples adaptés de demandes auxquelles le chatbot peut répondre. Termine alors par deux suites au choix, dans la même phrase de fin : soit chiffrer ensemble ce que cela pourrait lui rapporter (demande quelle demande revient le plus souvent), soit en parler directement avec Marc-Paul en écrivant à contact@mpsolutionsia.fr pour une démonstration adaptée à son métier.
 3. Propose ensuite un calcul personnalisé du chiffre d'affaires potentiellement récupérable.
 4. Si elle accepte, collecte séparément et dans cet ordre :
    a) la valeur moyenne d'un client ;
