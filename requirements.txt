@@ -3,3 +3,5 @@ anthropic==0.111.0
 openai>=2.0.0,<3.0.0
 Flask-Limiter==3.8.0
 python-dotenv==1.2.2
+
+certifi>=2026.10.19
