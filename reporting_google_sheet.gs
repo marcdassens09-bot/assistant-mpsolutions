@@ -7,6 +7,24 @@
 
 const JETON = 'REMPLACER_PAR_LE_JETON';
 const COLONNES = ['timestamp', 'question', 'profile', 'urgent', 'answered', 'client'];
+// Durée de conservation annoncée dans la politique de confidentialité du site.
+const CONSERVATION_JOURS = 365;
+
+// Les lignes sont ajoutées dans l'ordre chronologique : on supprime d'un
+// coup toutes celles du haut qui ont dépassé la durée de conservation.
+function _purgerAnciennes(feuille) {
+  const derniere = feuille.getLastRow();
+  if (derniere < 2) return;
+  const limite = new Date(Date.now() - CONSERVATION_JOURS * 24 * 3600 * 1000);
+  const dates = feuille.getRange(2, 1, derniere - 1, 1).getValues();
+  let n = 0;
+  while (n < dates.length) {
+    const d = dates[n][0] instanceof Date ? dates[n][0] : new Date(String(dates[n][0]));
+    if (isNaN(d.getTime()) || d >= limite) break;
+    n++;
+  }
+  if (n > 0) feuille.deleteRows(2, n);
+}
 
 function _reponse(objet) {
   return ContentService.createTextOutput(JSON.stringify(objet))
@@ -42,6 +60,7 @@ function doPost(e) {
       _texte(ev.timestamp), _texte(ev.question), _texte(ev.profile || 'inconnu'),
       String(!!ev.urgent), String(ev.answered !== false), _texte(ev.client),
     ]]);
+    _purgerAnciennes(feuille);
   } finally {
     verrou.releaseLock();
   }

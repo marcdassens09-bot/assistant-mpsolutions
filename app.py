@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from roi import calculer_roi
 from reporting_logger import log_event
 from reporting_dashboard import reporting_bp
+from reporting_stats import load_events
 
 load_dotenv()
 
@@ -337,20 +338,15 @@ def index():
 
 
 def generer_rapport():
-    """Analyse par Claude des 50 dernières questions posées à la bulle."""
+    """Analyse par Claude des 50 dernières questions posées à la bulle.
+    Même source que /reporting : Google Sheet si REPORTING_SHEET_URL, sinon fichier."""
     try:
-        with open(REPORTING_LOG_PATH, "r", encoding="utf-8") as f:
-            lignes = f.readlines()
-    except FileNotFoundError:
-        return "Aucune question enregistrée pour le moment."
-    questions = []
-    for ligne in lignes[-50:]:
-        try:
-            q = json.loads(ligne).get("question", "").strip()
-        except (json.JSONDecodeError, AttributeError):
-            continue
-        if q:
-            questions.append(q)
+        events = load_events(REPORTING_LOG_PATH, days=30)
+    except Exception as e:
+        print(f"Erreur lecture reporting : {e}", flush=True)
+        return "Les questions enregistrées sont momentanément illisibles. Réessayez dans quelques minutes."
+    questions = [str(ev.get("question", "")).strip() for ev in events[-50:]]
+    questions = [q for q in questions if q]
     if not questions:
         return "Aucune question enregistrée pour le moment."
     try:

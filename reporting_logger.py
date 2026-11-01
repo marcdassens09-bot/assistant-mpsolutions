@@ -20,7 +20,38 @@ import json
 import os
 import threading
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+
+# Durée de conservation annoncée dans la politique de confidentialité du site.
+CONSERVATION_JOURS = 365
+_derniere_purge = {}
+
+
+def _purger_anciens(log_path):
+    """Supprime du fichier les événements de plus de CONSERVATION_JOURS.
+    Au plus une fois par jour et par fichier, pour ne pas réécrire le
+    fichier à chaque message."""
+    aujourd_hui = datetime.now(timezone.utc).date()
+    if _derniere_purge.get(log_path) == aujourd_hui:
+        return
+    _derniere_purge[log_path] = aujourd_hui
+    limite = datetime.now(timezone.utc) - timedelta(days=CONSERVATION_JOURS)
+    try:
+        with open(log_path, "r", encoding="utf-8") as f:
+            lignes = f.readlines()
+    except FileNotFoundError:
+        return
+    gardees = []
+    for ligne in lignes:
+        try:
+            if datetime.fromisoformat(json.loads(ligne)["timestamp"]) < limite:
+                continue
+        except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+            pass  # ligne illisible : on la garde plutôt que de perdre une donnée
+        gardees.append(ligne)
+    if len(gardees) != len(lignes):
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.writelines(gardees)
 
 
 def _envoyer_sheet(url, event):
@@ -84,5 +115,6 @@ def log_event(log_path, question, profile="inconnu", urgent=False,
             os.makedirs(dossier, exist_ok=True)
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(event, ensure_ascii=False) + "\n")
+        _purger_anciens(log_path)
     except OSError as e:
         print(f"[reporting_logger] Écriture du log impossible ({log_path}) : {e}")
