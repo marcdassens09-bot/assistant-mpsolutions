@@ -488,12 +488,14 @@ def chat():
             "role": "assistant",
             "content": texte
         })
-        log_event(
-            log_path=REPORTING_LOG_PATH,
-            question=filtrer_donnees_sensibles(message),
-            answered=bool(texte) and texte != "Un instant, je réfléchis...",
-            client_name="MP Solutions IA - bulle site vitrine",
-        )
+        # Le test quotidien d'agent-loop (verifier_services.py) n'est pas un visiteur.
+        if request.headers.get("X-MPS-Surveillance") != "1":
+            log_event(
+                log_path=REPORTING_LOG_PATH,
+                question=filtrer_donnees_sensibles(message),
+                answered=bool(texte) and texte != "Un instant, je réfléchis...",
+                client_name="MP Solutions IA - bulle site vitrine",
+            )
         return jsonify({"reponse": texte, "historique": historique})
 
     except Exception as e:
