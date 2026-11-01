@@ -63,9 +63,25 @@ def _envoyer_sheet(url, event):
     )
     try:
         with urllib.request.urlopen(req, timeout=20) as rep:
-            rep.read()
+            corps = rep.read().decode("utf-8", errors="replace")
     except Exception as e:
         print(f"[reporting_logger] Envoi au Google Sheet impossible : {e}", flush=True)
+        return
+    # Google répond 200 même quand le script refuse : sans ce contrôle, un
+    # mauvais jeton ou une mauvaise URL perdait les questions en silence
+    # (panne de la démo du 01/11/2026).
+    try:
+        ok = json.loads(corps).get("ok") is True
+    except (json.JSONDecodeError, AttributeError):
+        print("[reporting_logger] Le Google Sheet a renvoyé une page au lieu d'une "
+              "réponse JSON : vérifier que REPORTING_SHEET_URL est bien l'URL /exec "
+              "du déploiement (pas l'éditeur ni /dev).", flush=True)
+        return
+    if not ok:
+        print("[reporting_logger] Le Google Sheet a refusé l'enregistrement : le jeton "
+              "de REPORTING_SHEET_URL ne correspond pas à JETON dans le script, ou le "
+              "déploiement n'est pas à jour (Gérer les déploiements > Nouvelle version).",
+              flush=True)
 
 
 def log_event(log_path, question, profile="inconnu", urgent=False,
