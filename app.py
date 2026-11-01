@@ -345,8 +345,11 @@ def generer_rapport():
     except Exception as e:
         print(f"Erreur lecture reporting : {e}", flush=True)
         return "Les questions enregistrées sont momentanément illisibles. Réessayez dans quelques minutes."
-    questions = [str(ev.get("question", "")).strip() for ev in events[-50:]]
-    questions = [q for q in questions if q]
+    # Les réponses courtes ("oui", "Infirmiere", "lezat sur leze") sont écartées :
+    # sans la conversation autour, le modèle les prenait pour une perte de contexte
+    # du bot (rapport du 01/11/2026). Même seuil que le camping (plus de 4 mots).
+    questions = [str(ev.get("question", "")).strip() for ev in events]
+    questions = [q for q in questions if len(q.split()) > 4][-50:]
     if not questions:
         return "Aucune question enregistrée pour le moment."
     try:
@@ -356,7 +359,9 @@ def generer_rapport():
             thinking={"type": "disabled"},
             system=(
                 "Analyse ces questions posées par des visiteurs du site de MP Solutions IA "
-                "(chatbots IA pour artisans et petites entreprises d'Ariège). Génère un rapport "
+                "(chatbots IA pour artisans et petites entreprises d'Ariège). Les réponses courtes "
+                "(oui, un nom de ville, un métier seul) ont été retirées : le chatbot, lui, voit toute "
+                "la conversation, ne conclus donc pas à une perte de contexte. Génère un rapport "
                 "en Markdown, concis : Top 3 sujets (%), signaux d'intérêt commercial, questions "
                 "mal couvertes par le site, 1 conseil concret pour améliorer le site ou l'offre."
             ),
