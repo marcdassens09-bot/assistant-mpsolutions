@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rapport — {{ client_name }}</title>
+<style>
+  body { background:#FFFFFF; color:#1b3a2b; font-family:Arial,sans-serif; margin:0; padding:40px 16px; line-height:1.5; }
+  .wrap { max-width:760px; margin:0 auto; }
+  h1 { color:#1b3a2b; font-size:22px; margin-bottom:4px; }
+  .tagline { color:#E8730A; font-size:13px; margin-bottom:32px; }
+  .rapport h1, .rapport h2, .rapport h3 { font-size:15px; color:#E8730A; border-bottom:1px solid #e0ded4; padding-bottom:6px; margin-top:28px; }
+  .rapport p, .rapport li { font-size:14px; }
+  .rapport hr { border:none; border-top:1px solid #e0ded4; margin:24px 0; }
+  .rapport table { border-collapse:collapse; width:100%; font-size:14px; margin:12px 0; }
+  .rapport th, .rapport td { text-align:left; padding:6px 8px; border-bottom:1px solid #f2f1ea; }
+  .rapport th { border-bottom:1px solid #e0ded4; }
+  .footer { font-size:11px; color:#1b3a2b; opacity:0.6; margin-top:40px; border-top:1px solid #e0ded4; padding-top:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>&gt;&gt; Rapport — {{ client_name }}</h1>
+  <div class="tagline">Analyse des dernières questions posées à l'assistant — {{ date }}</div>
+
+  <div class="rapport">
+    {{ contenu }}
+  </div>
+
+  <div class="footer">
+    MP Solutions IA — contact@mpsolutionsia.fr — Artigat (09130)
+  </div>
+</div>
+</body>
+</html>

@@ -1,7 +1,12 @@
 import re
 import os
+import hmac
+import html
 import json
+from datetime import datetime
+import markdown
 from flask import Flask, request, jsonify, render_template
+from markupsafe import Markup
 from anthropic import Anthropic
 from openai import OpenAI
 from flask_limiter import Limiter
@@ -329,6 +334,63 @@ OUTIL_CALCULER_ROI = {
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+def generer_rapport():
+    """Analyse par Claude des 50 dernières questions posées à la bulle."""
+    try:
+        with open(REPORTING_LOG_PATH, "r", encoding="utf-8") as f:
+            lignes = f.readlines()
+    except FileNotFoundError:
+        return "Aucune question enregistrée pour le moment."
+    questions = []
+    for ligne in lignes[-50:]:
+        try:
+            q = json.loads(ligne).get("question", "").strip()
+        except (json.JSONDecodeError, AttributeError):
+            continue
+        if q:
+            questions.append(q)
+    if not questions:
+        return "Aucune question enregistrée pour le moment."
+    try:
+        resultat = client.messages.create(
+            model="claude-sonnet-5",
+            max_tokens=1500,
+            thinking={"type": "disabled"},
+            system=(
+                "Analyse ces questions posées par des visiteurs du site de MP Solutions IA "
+                "(chatbots IA pour artisans et petites entreprises d'Ariège). Génère un rapport "
+                "en Markdown, concis : Top 3 sujets (%), signaux d'intérêt commercial, questions "
+                "mal couvertes par le site, 1 conseil concret pour améliorer le site ou l'offre."
+            ),
+            messages=[{"role": "user", "content": "Questions : " + " | ".join(questions)}],
+        )
+        return resultat.content[0].text.strip()
+    except Exception as e:
+        print(f"Erreur rapport : {e}", flush=True)
+        return "Le rapport est momentanément indisponible. Réessayez dans quelques minutes."
+
+
+@app.route("/rapport")
+def rapport():
+    # Pas de clé par défaut : sans RAPPORT_CLE sur Render, la route reste fermée.
+    cle = request.args.get("cle", "")
+    cle_attendue = os.environ.get("RAPPORT_CLE", "")
+    if not cle_attendue or not hmac.compare_digest(cle, cle_attendue):
+        return jsonify({"erreur": "Accès refusé"}), 403
+    texte = generer_rapport()
+    if request.args.get("format") == "json":
+        return jsonify({"rapport": texte})
+    # Le texte vient du modèle, lui-même nourri par les questions des visiteurs :
+    # on échappe tout HTML avant de convertir le Markdown.
+    contenu = markdown.markdown(html.escape(texte, quote=False), extensions=["tables"])
+    return render_template(
+        "rapport.html",
+        contenu=Markup(contenu),
+        client_name=os.environ.get("REPORTING_CLIENT_NAME", "MP Solutions IA"),
+        date=datetime.now().strftime("%d/%m/%Y"),
+    )
 
 
 @app.route("/chat", methods=["POST"])
