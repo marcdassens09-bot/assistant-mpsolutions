@@ -376,7 +376,10 @@ def generer_rapport():
                 "Analyse ces questions posées par des visiteurs du site de MP Solutions IA "
                 "(chatbots IA pour artisans et petites entreprises d'Ariège). Les réponses courtes "
                 "(oui, un nom de ville, un métier seul) ont été retirées : le chatbot, lui, voit toute "
-                "la conversation, ne conclus donc pas à une perte de contexte. Génère un rapport "
+                "la conversation, ne conclus donc pas à une perte de contexte. Tu ne vois ni "
+                "le site ni les réponses du chatbot : ne suppose pas ce que le site contient, et "
+                "présente ce qui te semble mal couvert comme une piste à vérifier, pas comme un "
+                "constat. Génère un rapport "
                 "en Markdown, concis : Top 3 sujets (%), signaux d'intérêt commercial, questions "
                 "mal couvertes par le site, 1 conseil concret pour améliorer le site ou l'offre."
             ),
