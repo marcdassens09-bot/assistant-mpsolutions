@@ -337,6 +337,10 @@ def index():
     return render_template("index.html")
 
 
+# En dessous de ce nombre de questions, /rapport les liste sans les analyser.
+RAPPORT_SEUIL_ANALYSE = 10
+
+
 def generer_rapport():
     """Analyse par Claude des 50 dernières questions posées à la bulle.
     Même source que /reporting : Google Sheet si REPORTING_SHEET_URL, sinon fichier."""
@@ -349,6 +353,17 @@ def generer_rapport():
     questions = [q for q in questions if q]
     if not questions:
         return "Aucune question enregistrée pour le moment."
+    if len(questions) < RAPPORT_SEUIL_ANALYSE:
+        # Trop peu de questions pour des pourcentages ou des conclusions :
+        # on les liste telles quelles, sans appeler le modèle.
+        lignes = "\n".join("- " + " ".join(q.split()) for q in questions)
+        pluriel = "s" if len(questions) > 1 else ""
+        return (
+            f"**{len(questions)} question{pluriel} enregistrée{pluriel} sur les 30 derniers jours.**\n\n"
+            f"C'est trop peu pour en tirer des tendances : l'analyse (sujets, signaux "
+            f"commerciaux, conseil) démarre à partir de {RAPPORT_SEUIL_ANALYSE} questions.\n\n"
+            f"## Questions posées\n\n{lignes}"
+        )
     try:
         resultat = client.messages.create(
             model="claude-sonnet-5",
