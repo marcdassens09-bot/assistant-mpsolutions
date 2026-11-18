@@ -15,7 +15,7 @@ Variables d'environnement (Render > Environment) :
     RETELL_API_KEY       cle API Retell qui porte le badge "webhook"
                          (obligatoire : sans elle, tout est refuse)
     BREVO_API_KEY        cle API Brevo (obligatoire pour l'envoi)
-    APPEL_DESTINATAIRE   qui recoit les messages (defaut contact@mpsolutionsia.fr)
+    APPEL_DESTINATAIRE   qui recoit les messages, une ou plusieurs adresses separees par des virgules (defaut contact@mpsolutionsia.fr)
     FICHE_EXPEDITEUR     adresse d'envoi verifiee dans Brevo
                          (defaut contact@mpsolutionsia.fr)
 """
@@ -166,7 +166,10 @@ def _envoyer(sujet, corps_html, corps_texte, call_id):
             "name": "Assistant vocal MP Solutions IA",
             "email": os.environ.get("FICHE_EXPEDITEUR", "contact@mpsolutionsia.fr"),
         },
-        "to": [{"email": os.environ.get("APPEL_DESTINATAIRE", "contact@mpsolutionsia.fr")}],
+        # Une ou plusieurs adresses, separees par des virgules (ex. le parent et un proche)
+        "to": [{"email": a.strip()} for a in
+               os.environ.get("APPEL_DESTINATAIRE", "contact@mpsolutionsia.fr").split(",")
+               if a.strip()],
         "subject": sujet,
         "htmlContent": corps_html,
         "textContent": corps_texte,
