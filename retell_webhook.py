@@ -18,6 +18,18 @@ Variables d'environnement (Render > Environment) :
     APPEL_DESTINATAIRE   qui recoit les messages, une ou plusieurs adresses separees par des virgules (defaut contact@mpsolutionsia.fr)
     FICHE_EXPEDITEUR     adresse d'envoi verifiee dans Brevo
                          (defaut contact@mpsolutionsia.fr)
+
+  SMS (facultatif, en plus de l'email) :
+    BREVO_SMS_API_KEY        cle Brevo dediee (droit "SMS transactionnels")
+    APPEL_SMS_DESTINATAIRE   un ou plusieurs portables separes par des virgules
+                             (ex. "06 12 34 56 78, +33 7 98 76 54 32").
+                             Vide ou absent = pas de SMS.
+    SMS_EXPEDITEUR           nom affiche (11 lettres/chiffres max, defaut MPSolutions)
+
+  Le SMS est "transactionnel" (pas de code STOP), en caracteres simples
+  (sans accents) et coupe a 160 caracteres pour ne compter que pour 1 SMS.
+  Doc Brevo verifiee le 19/11/2026 :
+  https://developers.brevo.com/docs/transactional-sms-endpoints
 """
 
 import hashlib
@@ -28,6 +40,7 @@ import os
 import re
 import threading
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 from collections import OrderedDict
@@ -39,6 +52,8 @@ from flask import request
 from app import app, limiter
 
 BREVO_URL_ENVOI = "https://api.brevo.com/v3/smtp/email"
+BREVO_URL_SMS = "https://api.brevo.com/v3/transactionalSMS/send"
+SMS_MAX = 160  # 1 seul SMS en caracteres simples (GSM 7 bits)
 TOLERANCE_MS = 5 * 60 * 1000  # Retell : refuser une signature de plus de 5 min
 MOTIF_SIGNATURE = re.compile(r"v=(\d+),d=([0-9a-fA-F]+)")
 
@@ -194,6 +209,126 @@ def _envoyer(sujet, corps_html, corps_texte, call_id):
         print(f"[retell] ECHEC envoi : {e}", flush=True)
 
 
+# ── SMS (Brevo, facultatif) ──────────────────────────────────────────────────
+
+# Caracteres de l'alphabet GSM de base (1 caractere = 1 place sur 160).
+_GSM_BASE = set(
+    "@£$¥\n\rΔ_ !\"#%&'()*+,-./0123456789:;<=>?"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+)
+_REMPLACEMENTS = {
+    "’": "'", "‘": "'", "“": '"', "”": '"', "«": '"', "»": '"',
+    "—": "-", "–": "-", "…": "...", "[": "(", "]": ")", "{": "(", "}": ")",
+    "œ": "oe", "Œ": "OE", "æ": "ae", "Æ": "AE", "ß": "ss",
+    "€": "EUR", "\u00a0": " ", "\n": " ", "\r": " ", "\t": " ",
+}
+
+
+def texte_sms(texte):
+    """Enleve accents et caracteres speciaux : il ne reste que du GSM de base."""
+    for avant, apres in _REMPLACEMENTS.items():
+        texte = texte.replace(avant, apres)
+    texte = unicodedata.normalize("NFKD", texte)
+    texte = "".join(c for c in texte if not unicodedata.combining(c))
+    texte = "".join(c if c in _GSM_BASE else " " for c in texte)
+    return re.sub(r"\s+", " ", texte).strip()
+
+
+def numero_sms(brut):
+    """Met un numero au format Brevo (indicatif, sans +). None si pas un portable.
+
+    "06 12 34 56 78" -> "33612345678" ; "+33 7..." -> "337..." ;
+    autre pays en "+xx..." ou "00xx..." garde tel quel.
+    """
+    chiffres = re.sub(r"[^\d+]", "", brut or "")
+    if chiffres.startswith("+"):
+        chiffres = chiffres[1:]
+    elif chiffres.startswith("00"):
+        chiffres = chiffres[2:]
+    elif chiffres.startswith("0"):
+        chiffres = "33" + chiffres[1:]
+    if not chiffres.isdigit():
+        return None
+    if chiffres.startswith("33"):
+        # France : seuls les portables (06, 07) recoivent les SMS
+        if len(chiffres) != 11 or chiffres[2] not in "67":
+            return None
+    elif not 8 <= len(chiffres) <= 15:
+        return None
+    return chiffres
+
+
+def preparer_sms(call):
+    """Texte court : qui, son numero, pourquoi. 160 caracteres maximum."""
+    champs = (call.get("call_analysis") or {}).get("custom_analysis_data") or {}
+    appelant = texte_sms(_texte(champs.get("appelant"), "inconnu"))
+    entreprise = texte_sms(str(champs.get("entreprise") or "").strip())
+    if entreprise.lower() in ("", "non indique", "aucune", "particulier"):
+        entreprise = ""
+    telephone = texte_sms(str(champs.get("telephone") or "").strip()) or "non donne"
+    motif = texte_sms(_texte(champs.get("motif"), "non precise"))
+
+    qui = appelant + (f" ({entreprise})" if entreprise else "")
+    debut = f"Appel de {qui}, tel {telephone}. Motif : "
+    fin = " - MP Solutions IA"
+    place = SMS_MAX - len(debut) - len(fin)
+    if place < 10:  # nom tres long : on raccourcit le debut
+        debut = debut[: SMS_MAX - len(fin) - 13] + "... Motif : "
+        place = SMS_MAX - len(debut) - len(fin)
+    if len(motif) > place:
+        motif = motif[: place - 3].rstrip() + "..."
+    return (debut + motif + fin)[:SMS_MAX]
+
+
+def _envoyer_sms(texte, call_id):
+    cle = (os.environ.get("BREVO_SMS_API_KEY") or "").strip()
+    brut = os.environ.get("APPEL_SMS_DESTINATAIRE", "")
+    numeros = [n for n in (numero_sms(x) for x in brut.split(",") if x.strip()) if n]
+    if not brut.strip():
+        return  # pas de SMS demande
+    if not cle:
+        print("[retell] SMS non envoye : BREVO_SMS_API_KEY absente", flush=True)
+        return
+    if not numeros:
+        print("[retell] SMS non envoye : aucun numero de portable valide", flush=True)
+        return
+    expediteur = re.sub(r"[^A-Za-z0-9]", "",
+                        os.environ.get("SMS_EXPEDITEUR", "MPSolutions"))[:11] or "MPSolutions"
+    for numero in numeros:
+        payload = {
+            "sender": expediteur,
+            "recipient": numero,
+            "content": texte,
+            "type": "transactional",
+            "tag": "appel-assistant",
+        }
+        req = urllib.request.Request(
+            BREVO_URL_SMS,
+            data=json.dumps(payload).encode("utf-8"),
+            method="POST",
+            headers={
+                "api-key": cle,
+                "accept": "application/json",
+                "content-type": "application/json",
+            },
+        )
+        fin_numero = numero[-2:]
+        try:
+            with urllib.request.urlopen(req, timeout=10) as rep:
+                print(f"[retell] SMS envoye pour {call_id} (..{fin_numero}, HTTP {rep.status})",
+                      flush=True)
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", "replace")[:300]
+            print(f"[retell] ECHEC SMS ..{fin_numero} HTTP {e.code} : {detail}", flush=True)
+        except Exception as e:
+            print(f"[retell] ECHEC SMS ..{fin_numero} : {e}", flush=True)
+
+
+def _envoyer_tout(sujet, corps_html, corps_texte, texte_court, call_id):
+    _envoyer(sujet, corps_html, corps_texte, call_id)
+    _envoyer_sms(texte_court, call_id)
+
+
 # ── Route ────────────────────────────────────────────────────────────────────
 
 @app.route("/retell-webhook", methods=["POST"])
@@ -222,8 +357,11 @@ def retell_webhook():
         return "", 204
 
     sujet, corps_html, corps_texte = preparer_email(call)
-    # On repond tout de suite a Retell (limite 10 s), l'email part a cote.
+    texte_court = preparer_sms(call)
+    # On repond tout de suite a Retell (limite 10 s), l'email et le SMS partent a cote.
     threading.Thread(
-        target=_envoyer, args=(sujet, corps_html, corps_texte, call_id), daemon=True
+        target=_envoyer_tout,
+        args=(sujet, corps_html, corps_texte, texte_court, call_id),
+        daemon=True,
     ).start()
     return "", 204
